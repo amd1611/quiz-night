@@ -10,8 +10,8 @@ export interface MyView {
 }
 export interface PlayerView {pid: string; name: string; ready: boolean; connected: boolean; score: number; out: boolean; answered: boolean; gap: number}
 export interface Snapshot {
-  code: string; solo: boolean; host: string; mode: ModeId; genre: string; st: 'lobby' | 'play' | 'end';
-  q: number; total: number; league: string; ms: number; players: PlayerView[]; question: PublicQ | null; me: MyView | null;
+  code: string; solo: boolean; host: string; mode: ModeId; st: 'lobby' | 'play' | 'end';
+  q: number; total: number; league: string; busy: boolean; ai: boolean; ms: number; players: PlayerView[]; question: PublicQ | null; me: MyView | null;
 }
 export interface LeagueView {
   code: string; name: string;

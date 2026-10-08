@@ -12,7 +12,7 @@ export default function Game({snap, act}: {snap: Snapshot; act: Act}) {
   const [now, setNow] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, []);
   const left = Math.max(0, Math.ceil((snap.ms - (now - recv)) / 1000));
   return <>
-    <div className="top"><b>{M.emoji} {M.name}</b><span>{snap.q + 1}/{snap.total}</span><span className="tm">⏱ {left}</span></div>
+    <div className="top"><b>{M.emoji} {M.name}{snap.ai && <span className="mut" title="AI-generated questions"> 🤖</span>}</b><span>{snap.q + 1}/{snap.total}</span><span className="tm">⏱ {left}</span></div>
     <div className="strip">{snap.players.map(p => <span key={p.pid} className={'pl' + (p.pid === myId ? ' me' : '')}>{p.answered && !p.out ? '✓ ' : ''}{p.name} <b>{money(snap.mode, p.score)}</b></span>)}</div>
     {self?.out && <div className="note">{snap.mode === 'chase' && self.gap >= RULES.chase.homeGap ? '🏁 You made it home!' : '💀 You are out - watch the others'}</div>}
     {q.kind === 'mcq' && <Mcq q={q} me={me} mode={snap.mode} act={act} />}

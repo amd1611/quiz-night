@@ -1,8 +1,9 @@
 // Authoritative game server logic. Knows nothing about sockets: it gets a `send` function.
-import {RULES, MODE_IDS, GENRES, type ModeId} from '../../shared/src/config';
+import {RULES, MODE_IDS, type ModeId} from '../../shared/src/config';
 import {buildItems, freshState, gradeMcq, lingoColors, newWheel, publicQ, wheelKey, wheelMask, wheelSpin, type Item, type LingoItem, type PState, type WheelRound} from '../../shared/src/engine';
 import type {LeagueView, MyView, Snapshot} from '../../shared/src/types';
 import type {Store} from './store';
+import type {QuestionSource} from './ai';
 
 type Send = (pid: string, ev: string, data: unknown) => void;
 type Res = {ok?: true; error?: string; code?: string};
@@ -11,15 +12,16 @@ interface RP {
   correct: boolean | null; ok: boolean | null; hide: number[]; guesses: string[]; wheel: WheelRound; wbase: number; dc?: NodeJS.Timeout;
 }
 interface Room {
-  code: string; host: string; solo: boolean; mode: ModeId; genre: string; st: 'lobby' | 'play' | 'end'; q: number; items: Item[];
+  code: string; host: string; solo: boolean; mode: ModeId; st: 'lobby' | 'play' | 'end'; q: number; items: Item[];
   players: Map<string, RP>; league: string; deadline: number; timer?: NodeJS.Timeout; adv?: NodeJS.Timeout;
+  seen: string[]; busy: boolean; ai: boolean; pre?: {key: string; p: Promise<{items: Item[]; ai: boolean}>}; warmT?: NodeJS.Timeout;
 }
 const mk = (pid: string, name: string): RP => ({pid, name, ready: false, connected: true, st: freshState(), answered: false, sel: -1, correct: null, ok: null, hide: [], guesses: [], wheel: newWheel(), wbase: 0});
 const ERR = (error: string): Res => ({error});
 
 export class Game {
   rooms = new Map<string, Room>();
-  constructor(private send: Send, private store: Store, private onLeague: (code: string) => void) {}
+  constructor(private send: Send, private store: Store, private onLeague: (code: string) => void, private source: QuestionSource) {}
 
   // ---------- helpers ----------
   private roomOf(pid: string) { for (const r of this.rooms.values()) if (r.players.has(pid)) return r; }
@@ -47,7 +49,7 @@ export class Game {
       if (it.kind === 'wheel') view.wheel = {mask: wheelMask(me.wheel, it.phrase, me.answered), sp: me.wheel.sp, rs: me.wheel.rs, bad: me.wheel.bad, last: me.wheel.last, used: me.wheel.gs};
     }
     return {
-      code: r.solo ? '' : r.code, solo: r.solo, host: r.host, mode: r.mode, genre: r.genre, st: r.st, q: r.q, total: r.items.length, league: r.league,
+      code: r.solo ? '' : r.code, solo: r.solo, host: r.host, mode: r.mode, st: r.st, q: r.q, total: r.items.length, league: r.league, busy: r.busy, ai: r.ai,
       ms: Math.max(0, r.deadline - Date.now()),
       players: [...r.players.values()].map(p => ({pid: p.pid, name: p.name, ready: p.ready || p.pid === r.host, connected: p.connected, score: p.st.score, out: p.st.out, answered: p.answered, gap: p.st.gap})),
       question: it ? publicQ(r.mode, r.q, it, me.st) : null, me: view
@@ -77,9 +79,9 @@ export class Game {
     }
     this.leave(pid);
     let code = ''; do code = String(Math.floor(Math.random() * 10 ** RULES.roomCodeLength)).padStart(RULES.roomCodeLength, '0'); while (this.rooms.has(code));
-    const r: Room = {code, host: pid, solo: !!o.solo, mode: 'pub', genre: 'all', st: 'lobby', q: 0, items: [], players: new Map(), league: lg, deadline: 0};
+    const r: Room = {code, host: pid, solo: !!o.solo, mode: 'pub', st: 'lobby', q: 0, items: [], players: new Map(), league: lg, deadline: 0, seen: [], busy: false, ai: false};
     r.players.set(pid, mk(pid, name)); this.rooms.set(code, r);
-    this.push(r); this.hook(r); return {ok: true, code};
+    this.warm(r); this.push(r); this.hook(r); return {ok: true, code};
   }
   join(pid: string, name: string, code: string): Res {
     const r = this.rooms.get(code.trim());
@@ -94,7 +96,7 @@ export class Game {
   leave(pid: string): Res {
     const r = this.roomOf(pid); if (!r) return {ok: true};
     clearTimeout(r.players.get(pid)!.dc); r.players.delete(pid);
-    if (!r.players.size) { clearTimeout(r.timer); clearTimeout(r.adv); this.rooms.delete(r.code); }
+    if (!r.players.size) { clearTimeout(r.timer); clearTimeout(r.adv); clearTimeout(r.warmT); this.rooms.delete(r.code); }
     else {
       if (r.host === pid) r.host = ([...r.players.values()].find(x => x.connected) ?? [...r.players.values()][0]).pid;
       this.push(r); if (r.st === 'play') this.check(r);
@@ -103,24 +105,38 @@ export class Game {
   }
 
   // ---------- lobby ----------
-  setMode(pid: string, mode: ModeId, genre?: string): Res {
-    const r = this.roomOf(pid); if (!r || r.host !== pid || r.st !== 'lobby') return ERR('Only the host can do that');
+  setMode(pid: string, mode: ModeId): Res {
+    const r = this.roomOf(pid); if (!r || r.host !== pid || r.st !== 'lobby' || r.busy) return ERR('Only the host can do that');
     if (MODE_IDS.includes(mode)) r.mode = mode;
-    if (genre && GENRES.includes(genre)) r.genre = genre;
-    this.push(r); return {ok: true};
+    this.warm(r); this.push(r); return {ok: true};
   }
   toggleReady(pid: string): Res { const r = this.roomOf(pid); if (!r || r.st !== 'lobby') return ERR('Not in a lobby'); const p = r.players.get(pid)!; p.ready = !p.ready; this.push(r); return {ok: true}; }
-  start(pid: string): Res {
+  async start(pid: string): Promise<Res> {
     const r = this.roomOf(pid); if (!r || r.host !== pid || r.st !== 'lobby') return ERR('Only the host can start');
+    if (r.busy) return ERR('Already starting');
     if (![...r.players.values()].every(p => p.pid === r.host || p.ready)) return ERR('Everyone must be ready');
-    r.items = buildItems(r.mode, 1 + Math.floor(Math.random() * 1e9), r.genre); r.q = 0; r.st = 'play'; r.adv = undefined;
+    clearTimeout(r.warmT);
+    const job = r.pre?.key === r.mode ? r.pre.p : this.gen(r);
+    r.pre = undefined; r.busy = true; if (this.source.enabled) this.push(r);
+    let res: {items: Item[]; ai: boolean};
+    try { res = await job; } finally { r.busy = false; }
+    if (this.rooms.get(r.code) !== r || r.st !== 'lobby') return ERR('Lobby changed');
+    r.items = res.items; r.ai = res.ai; r.q = 0; r.st = 'play'; r.adv = undefined;
+    r.seen.push(...res.items.map(it => it.kind === 'mcq' ? it.q : it.kind === 'lingo' ? it.word : it.phrase)); r.seen = r.seen.slice(-200);
     for (const p of r.players.values()) p.st = freshState();
     this.begin(r); this.hook(r); return {ok: true};
   }
+  // Pre-generate the next game's questions a moment after the host settles on a mode (hides AI latency).
+  private warm(r: Room) {
+    if (!this.source.enabled) return;
+    clearTimeout(r.warmT);
+    r.warmT = setTimeout(() => { r.pre = {key: r.mode, p: this.gen(r)}; }, RULES.ai.warmDelayMs);
+  }
+  private gen(r: Room) { return this.source.items(r.mode, 1 + Math.floor(Math.random() * 1e9), r.seen.slice(-RULES.ai.avoidRecent)); }
   again(pid: string): Res {
     const r = this.roomOf(pid); if (!r || r.host !== pid || r.st !== 'end') return ERR('Only the host can do that');
     r.st = 'lobby'; r.items = []; for (const p of r.players.values()) { p.ready = false; p.st = freshState(); }
-    this.push(r); this.hook(r); return {ok: true};
+    this.warm(r); this.push(r); this.hook(r); return {ok: true};
   }
 
   // ---------- game flow ----------

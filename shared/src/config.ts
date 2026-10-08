@@ -1,7 +1,6 @@
 // ALL game rules live here. Change a number and both server and client follow.
-export type ModeId = 'pub' | 'mill' | 'pct' | 'jeo' | 'chase' | 'song' | 'lingo' | 'wheel';
-export const MODE_IDS: ModeId[] = ['pub', 'mill', 'pct', 'jeo', 'chase', 'song', 'lingo', 'wheel'];
-export const GENRES = ['all', 'Pop', 'Rock', 'Hip-Hop', 'Dance'];
+export type ModeId = 'pub' | 'mill' | 'pct' | 'jeo' | 'chase' | 'lingo' | 'wheel';
+export const MODE_IDS: ModeId[] = ['pub', 'mill', 'pct', 'jeo', 'chase', 'lingo', 'wheel'];
 
 export const MODES: Record<ModeId, {name: string; emoji: string; color: string; desc: string}> = {
   pub:   {name: 'Pub Quiz', emoji: '🍺', color: '#d97706', desc: '12 mixed questions, 1 point each. Most points wins.'},
@@ -9,19 +8,19 @@ export const MODES: Record<ModeId, {name: string; emoji: string; color: string; 
   pct:   {name: '1% Club', emoji: '💯', color: '#db2777', desc: 'Questions get harder (90% down to 1%). One wrong answer and you are eliminated.'},
   jeo:   {name: 'Jeopardy', emoji: '❓', color: '#1d4ed8', desc: 'Clues worth $200-$1000. Right adds, wrong subtracts.'},
   chase: {name: 'The Chase', emoji: '🏃', color: '#7c3aed', desc: 'Build a bank with 5 cash-builder questions, then outrun the Chaser. Get caught and you lose it all.'},
-  song:  {name: 'Guess the Song', emoji: '🎵', color: '#059669', desc: 'Clue-based song quiz. Pick a genre.'},
   lingo: {name: 'Lingo', emoji: '🔤', color: '#0891b2', desc: 'Guess the 5-letter word in 5 tries. The first letter is given.'},
   wheel: {name: 'Wheel of Fortune', emoji: '🎡', color: '#ea580c', desc: 'Spin, guess consonants for cash, buy vowels, reveal the puzzle.'}
 };
 
 export const RULES = {
+  ai: {timeoutMs: 15000, avoidRecent: 40, warmDelayMs: 1500, extra: 3},  // AI question generation (see server/src/ai.ts)
   maxPlayers: 10,
   roomCodeLength: 6,
   leagueCodeLength: 6,
   advanceDelayMs: 1800,         // pause after everyone answered, to show the answer
   graceMs: 6000,                // x5 = how long a disconnected player is kept
   time: {mcq: 20, lingo: 90, wheel: 120},   // seconds per question / round
-  count: {pub: 12, mill: 10, pct: 10, jeo: 10, chase: 17, song: 8, lingo: 4, wheel: 3},
+  count: {pub: 12, mill: 10, pct: 10, jeo: 10, chase: 17, lingo: 4, wheel: 3},
   millLadder: [100, 200, 300, 500, 1000, 2000, 4000, 8000, 16000, 32000],
   pctLadder: [90, 80, 70, 60, 50, 40, 30, 20, 10, 1],
   jeoValues: [200, 200, 400, 400, 600, 600, 800, 800, 1000, 1000],

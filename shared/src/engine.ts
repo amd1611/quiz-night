@@ -1,6 +1,6 @@
 // Pure game logic used by the authoritative server.
 import {RULES, type ModeId} from './config';
-import {QUESTIONS, SONGS, WORDS, PHRASES} from './content';
+import {QUESTIONS, WORDS, PHRASES} from './content';
 import type {PublicQ} from './types';
 
 export type McqItem = {kind: 'mcq'; cat: string; q: string; options: string[]; answer: string; value: number; pct: number; chaserRight: boolean};
@@ -19,25 +19,26 @@ export function shuffle<T>(arr: T[], r: () => number): T[] {
   return a;
 }
 
-export function buildItems(mode: ModeId, seed: number, genre = 'all'): Item[] {
-  const r = makeRng(seed), n = RULES.count[mode];
-  if (mode === 'song') {
-    return shuffle(SONGS.filter(s => genre === 'all' || s.genre === genre), r).slice(0, n).map(s => {
-      const wrong = shuffle(SONGS.filter(o => o.genre === s.genre && o !== s), r).slice(0, 3).map(o => o.answer);
-      return {kind: 'mcq' as const, cat: s.genre, q: s.clue, answer: s.answer, options: shuffle([s.answer, ...wrong], r), value: 0, pct: 0, chaserRight: false};
-    });
-  }
-  if (mode === 'lingo') return shuffle(WORDS, r).slice(0, n).map(word => ({kind: 'lingo' as const, word}));
-  if (mode === 'wheel') return shuffle(PHRASES, r).slice(0, n).map(p => ({kind: 'wheel' as const, ...p}));
-  return shuffle(QUESTIONS, r).slice(0, n).map((x, i) => ({
+export type RawQ = {cat: string; q: string; answer: string; wrong: string[]};
+/** Turns raw questions (from the bank or from the AI) into playable items. */
+export function itemsFromRaw(_mode: ModeId, seed: number, raw: RawQ[]): McqItem[] {
+  const r = makeRng(seed + 7);
+  return raw.map((x, i) => ({
     kind: 'mcq' as const, cat: x.cat, q: x.q, answer: x.answer, options: shuffle([x.answer, ...x.wrong], r),
     value: RULES.jeoValues[i] ?? 1000, pct: RULES.pctLadder[i] ?? 1, chaserRight: r() < RULES.chase.chaserAccuracy
   }));
 }
 
+export function buildItems(mode: ModeId, seed: number): Item[] {
+  const r = makeRng(seed), n = RULES.count[mode];
+  if (mode === 'lingo') return shuffle(WORDS, r).slice(0, n).map(word => ({kind: 'lingo' as const, word}));
+  if (mode === 'wheel') return shuffle(PHRASES, r).slice(0, n).map(p => ({kind: 'wheel' as const, ...p}));
+  return itemsFromRaw(mode, seed, shuffle(QUESTIONS, r).slice(0, n));
+}
+
 export function gradeMcq(mode: ModeId, q: number, it: McqItem, ok: boolean, p: PState): PState {
   const s = {...p}, c = RULES.chase;
-  if ((mode === 'pub' || mode === 'song' || mode === 'pct') && ok) s.score++;
+  if ((mode === 'pub' || mode === 'pct') && ok) s.score++;
   if (mode === 'mill' && ok) s.score = RULES.millLadder[q];
   if (mode === 'jeo') s.score += (ok ? 1 : -1) * it.value;
   if ((mode === 'mill' || mode === 'pct') && !ok) s.out = true;

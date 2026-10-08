@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import path from 'path';
 import {Server} from 'socket.io';
 import {Game} from './game';
+import {QuestionSource} from './ai';
 import {Store} from './store';
 
 const PORT = +(process.env.PORT || 3001);
@@ -12,7 +14,9 @@ const app = express(), srv = http.createServer(app);
 const io = new Server(srv, {cors: {origin: '*'}});
 
 const pushLeague = (code: string) => { const v = game.leagueView(code); if (v) io.to('l:' + code).emit('league', v); };
-const game = new Game((pid, ev, d) => io.to('p:' + pid).emit(ev, d), store, pushLeague);
+const source = new QuestionSource();
+console.log(source.enabled ? 'AI questions: ON (endless fresh questions)' : 'AI questions: OFF (built-in bank). Set GEMINI_API_KEY to enable.');
+const game = new Game((pid, ev, d) => io.to('p:' + pid).emit(ev, d), store, pushLeague, source);
 
 const dist = path.join(process.cwd(), 'client', 'dist');
 app.use(express.static(dist));
@@ -22,13 +26,13 @@ io.on('connection', s => {
   const pid = String(s.handshake.auth.pid || '').slice(0, 40), name = String(s.handshake.auth.name || '').trim().slice(0, 16);
   if (!pid || !name) { s.disconnect(); return; }
   s.join('p:' + pid); game.onConnect(pid, name);
-  const on = (ev: string, fn: (d: any) => unknown) => s.on(ev, (d: any, ack?: (r: unknown) => void) => {
-    try { const r = fn(d || {}); ack?.(r ?? {ok: true}); } catch (e) { console.error(ev, e); ack?.({error: 'Server error'}); }
+  const on = (ev: string, fn: (d: any) => unknown) => s.on(ev, async (d: any, ack?: (r: unknown) => void) => {
+    try { const r = await fn(d || {}); ack?.(r ?? {ok: true}); } catch (e) { console.error(ev, e); ack?.({error: 'Server error'}); }
   });
   on('create', d => game.create(pid, name, d));
   on('join', d => game.join(pid, name, String(d.code)));
   on('leave', () => game.leave(pid));
-  on('mode', d => game.setMode(pid, d.mode, d.genre));
+  on('mode', d => game.setMode(pid, d.mode));
   on('ready', () => game.toggleReady(pid));
   on('start', () => game.start(pid));
   on('again', () => game.again(pid));

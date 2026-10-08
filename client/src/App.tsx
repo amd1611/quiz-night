@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {GENRES, MODES, MODE_IDS} from '@shared/config';
+import {MODES, MODE_IDS} from '@shared/config';
 import type {LeagueView, Snapshot} from '@shared/types';
 import {call, connect, myId} from './net';
 import Game, {money, type Act} from './Game';
@@ -96,9 +96,8 @@ export function Lobby({snap, act}: {snap: Snapshot; act: Act}) {
     <div className="card">{snap.players.map(p => <div className="row" key={p.pid}><span>{p.name} {p.pid === snap.host && '👑'} {!p.connected && '(offline)'}</span><span>{p.ready ? '✅ Ready' : '⏳'}</span></div>)}</div>
     {host ? <><h2>Game mode</h2>
       <div className="grid">{MODE_IDS.map(id => <button key={id} className={'mode' + (snap.mode === id ? ' on' : '')} style={{background: MODES[id].color}} onClick={() => act('mode', {mode: id})}><span>{MODES[id].emoji}</span>{MODES[id].name}</button>)}</div>
-      {snap.mode === 'song' && <div style={{marginTop: 8}}>{GENRES.map(g => <button key={g} className={'chip' + (snap.genre === g ? ' on' : '')} onClick={() => act('mode', {mode: 'song', genre: g})}>{g === 'all' ? 'All genres' : g}</button>)}</div>}
       <p className="mut">{M.desc}</p>
-      <button className="btn" disabled={!all} onClick={() => act('start')}>{all ? 'Start game' : 'Waiting for players to be ready'}</button></>
+      <button className="btn" disabled={!all || snap.busy} onClick={() => act('start')}>{snap.busy ? '🤖 Generating fresh questions…' : all ? 'Start game' : 'Waiting for players to be ready'}</button></>
       : <><div className="card">Host picked: <b>{M.emoji} {M.name}</b><div className="mut">{M.desc}</div></div>
         <button className="btn" onClick={() => act('ready')}>{me?.ready ? 'Not ready' : "I'm ready!"}</button></>}
     <button className="btn sec" onClick={() => act('leave')}>Leave</button></>;
