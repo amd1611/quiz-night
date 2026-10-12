@@ -7,9 +7,9 @@ A multiplayer trivia night for friends, with seven familiar game-show-inspired m
 | Mode | How a round works |
 | --- | --- |
 | Pub Quiz | 12 mixed-category multiple-choice questions. |
-| Millionaire | 15 questions, a 50:50 lifeline, and safe checkpoints at questions 5 and 10. |
+| Who Wants to Be a Millionaire? | 15 questions, a 50:50 lifeline, and safe checkpoints at questions 5 and 10. |
 | 1% Club | 10 logic and common-sense puzzles that increase in difficulty. |
-| Jeopardy | 15 clues with point values; respond in question form. |
+| Jeopardy! | 15 clues with point values; respond in question form, gaining points for right responses and losing them for misses. |
 | The Chase | Build a cash pot, choose a safe, standard, or bold offer, then race the Chaser. |
 | Lingo | Guess a five-letter word using colour feedback, in up to five tries. |
 | Wheel of Fortune | Reveal a phrase by calling consonants, buying vowels, and solving it. |

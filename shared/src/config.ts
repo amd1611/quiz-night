@@ -4,9 +4,9 @@ export const MODE_IDS: ModeId[] = ['pub', 'mill', 'pct', 'jeo', 'chase', 'lingo'
 
 export const MODES: Record<ModeId, {name: string; emoji: string; color: string; desc: string}> = {
   pub:   {name: 'Pub Quiz', emoji: '\u{1F37A}', color: '#d97706', desc: 'A lively set of mixed-category questions. Highest score takes the night.'},
-  mill:  {name: 'Millionaire', emoji: '\u{1F4B0}', color: '#2563eb', desc: 'Climb 15 prize steps with a 50:50 lifeline and two safe checkpoints.'},
+  mill:  {name: 'Who Wants to Be a Millionaire?', emoji: '\u{1F4B0}', color: '#2563eb', desc: 'Climb 15 prize steps with a 50:50 lifeline and two safe checkpoints.'},
   pct:   {name: '1% Club', emoji: '\u{1F4AF}', color: '#db2777', desc: 'Logic and common-sense puzzles get tougher as the crowd gets smaller.'},
-  jeo:   {name: 'Jeopardy', emoji: '\u{2753}', color: '#1d4ed8', desc: 'Choose a clue, make your response in question form, and wager your points.'},
+  jeo:   {name: 'Jeopardy!', emoji: '\u{2753}', color: '#1d4ed8', desc: 'Respond to clue-style trivia in question form; right answers add points and misses deduct them.'},
   chase: {name: 'The Chase', emoji: '\u{1F3C3}', color: '#7c3aed', desc: 'Build a cash pot, take an offer, and try to stay ahead of the Chaser.'},
   lingo: {name: 'Lingo', emoji: '\u{1F524}', color: '#0891b2', desc: 'Use the colour clues to solve a five-letter word in five guesses.'},
   wheel: {name: 'Wheel of Fortune', emoji: '\u{1F3A1}', color: '#ea580c', desc: 'Spin for a consonant value, buy vowels, then solve the hidden phrase.'}
