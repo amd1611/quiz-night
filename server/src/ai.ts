@@ -6,7 +6,7 @@ import {buildItems, itemsFromRaw, type Item, type RawQ} from '../../shared/src/e
 
 export type AiCfg = {provider: 'gemini' | 'openai'; key: string; model: string; base: string};
 export function aiConfig(env: Record<string, string | undefined> = process.env): AiCfg | null {
-  if (env.GEMINI_API_KEY) return {provider: 'gemini', key: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-flash-latest', base: 'https://generativelanguage.googleapis.com/v1beta'};
+  if (env.GEMINI_API_KEY) return {provider: 'gemini', key: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-3.8-flash', base: 'https://generativelanguage.googleapis.com/v1beta'};
   if (env.AI_API_KEY) return {provider: 'openai', key: env.AI_API_KEY, model: env.AI_MODEL || 'llama-3.3-70b-versatile', base: env.AI_BASE_URL || 'https://api.groq.com/openai/v1'};
   return null;
 }
@@ -19,9 +19,11 @@ export function buildPrompt(mode: ModeId, n: number, avoid: string[]): string {
   if (mode === 'lingo') return `Return JSON {"words":["..."]} with ${n} different common English 5-letter words (nouns, verbs or adjectives, uppercase A-Z only, no proper nouns, plurals or slang).${no}`;
   if (mode === 'wheel') return `Return JSON {"puzzles":[{"hint":"...","phrase":"..."}]} with ${n} Wheel-of-Fortune style puzzles. hint is a short uppercase category (PHRASE, MOVIE, FOOD, PLACE, PROVERB, THING). phrase is 2-4 well-known words, uppercase letters and single spaces only, no punctuation or digits.${no}`;
   const shape = `Return JSON {"questions":[{"cat":"...","q":"...","answer":"...","wrong":["...","...","..."]}]} with ${n} items.`;
-  const order = mode === 'mill' ? ' Order from easiest to hardest, rising steadily (item 1 trivial, last item very hard).'
-    : mode === 'pct' ? ' Order by difficulty from very easy (about 90% of adults know it) down to extremely hard (about 1% know it).'
-    : mode === 'jeo' ? ' Vary the topics widely; phrase each as a Jeopardy-style clue.' : ' Mixed difficulty, mostly medium.';
+  const order = mode === 'mill' ? ' Order these 15 questions from warm-up easy to genuinely difficult. Increase the challenge steadily; never use obscure trick wording.'
+    : mode === 'pct' ? ' These are logic and common-sense puzzles, not general-knowledge trivia. Use clear patterns, wordplay, counting, and deduction. Make the first item very approachable and the final item unusually challenging, with one unambiguous answer.'
+    : mode === 'jeo' ? ' Vary topics across clues and keep the category informative. Write each prompt as a concise clue rather than a direct question; the response should be a person, place, or thing.'
+    : mode === 'chase' ? ' Write quick, unambiguous general-knowledge questions suitable for a fast head-to-head quiz.'
+    : ' Mix categories and difficulty, with mostly medium-level questions.';
   return `${shape} Multiple-choice trivia. Facts must be certain and verifiable, with exactly one correct answer, never time-sensitive (nothing "current" or "latest"). Wrong options must be plausible but definitely wrong. q under 140 chars, options under 40 chars. Mix topics: ${TOPICS}.${order}${no}`;
 }
 

@@ -3,13 +3,13 @@ export type ModeId = 'pub' | 'mill' | 'pct' | 'jeo' | 'chase' | 'lingo' | 'wheel
 export const MODE_IDS: ModeId[] = ['pub', 'mill', 'pct', 'jeo', 'chase', 'lingo', 'wheel'];
 
 export const MODES: Record<ModeId, {name: string; emoji: string; color: string; desc: string}> = {
-  pub:   {name: 'Pub Quiz', emoji: '🍺', color: '#d97706', desc: '12 mixed questions, 1 point each. Most points wins.'},
-  mill:  {name: 'Millionaire', emoji: '💰', color: '#2563eb', desc: 'Climb the money ladder. One wrong answer and you are out. One 50:50 lifeline.'},
-  pct:   {name: '1% Club', emoji: '💯', color: '#db2777', desc: 'Questions get harder (90% down to 1%). One wrong answer and you are eliminated.'},
-  jeo:   {name: 'Jeopardy', emoji: '❓', color: '#1d4ed8', desc: 'Clues worth $200-$1000. Right adds, wrong subtracts.'},
-  chase: {name: 'The Chase', emoji: '🏃', color: '#7c3aed', desc: 'Build a bank with 5 cash-builder questions, then outrun the Chaser. Get caught and you lose it all.'},
-  lingo: {name: 'Lingo', emoji: '🔤', color: '#0891b2', desc: 'Guess the 5-letter word in 5 tries. The first letter is given.'},
-  wheel: {name: 'Wheel of Fortune', emoji: '🎡', color: '#ea580c', desc: 'Spin, guess consonants for cash, buy vowels, reveal the puzzle.'}
+  pub:   {name: 'Pub Quiz', emoji: '\u{1F37A}', color: '#d97706', desc: 'A lively set of mixed-category questions. Highest score takes the night.'},
+  mill:  {name: 'Millionaire', emoji: '\u{1F4B0}', color: '#2563eb', desc: 'Climb 15 prize steps with a 50:50 lifeline and two safe checkpoints.'},
+  pct:   {name: '1% Club', emoji: '\u{1F4AF}', color: '#db2777', desc: 'Logic and common-sense puzzles get tougher as the crowd gets smaller.'},
+  jeo:   {name: 'Jeopardy', emoji: '\u{2753}', color: '#1d4ed8', desc: 'Choose a clue, make your response in question form, and wager your points.'},
+  chase: {name: 'The Chase', emoji: '\u{1F3C3}', color: '#7c3aed', desc: 'Build a cash pot, take an offer, and try to stay ahead of the Chaser.'},
+  lingo: {name: 'Lingo', emoji: '\u{1F524}', color: '#0891b2', desc: 'Use the colour clues to solve a five-letter word in five guesses.'},
+  wheel: {name: 'Wheel of Fortune', emoji: '\u{1F3A1}', color: '#ea580c', desc: 'Spin for a consonant value, buy vowels, then solve the hidden phrase.'}
 };
 
 export const RULES = {
@@ -17,13 +17,13 @@ export const RULES = {
   maxPlayers: 10,
   roomCodeLength: 6,
   leagueCodeLength: 6,
-  advanceDelayMs: 1800,         // pause after everyone answered, to show the answer
+  advanceDelayMs: 2000,         // pause after everyone answered, to show the answer
   graceMs: 6000,                // x5 = how long a disconnected player is kept
   time: {mcq: 20, lingo: 90, wheel: 120},   // seconds per question / round
-  count: {pub: 12, mill: 10, pct: 10, jeo: 10, chase: 17, lingo: 4, wheel: 3},
-  millLadder: [100, 200, 300, 500, 1000, 2000, 4000, 8000, 16000, 32000],
+  count: {pub: 12, mill: 15, pct: 10, jeo: 15, chase: 17, lingo: 4, wheel: 3},
+  millLadder: [100, 200, 300, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000, 125000, 250000, 500000, 1000000],
   pctLadder: [90, 80, 70, 60, 50, 40, 30, 20, 10, 1],
-  jeoValues: [200, 200, 400, 400, 600, 600, 800, 800, 1000, 1000],
+  jeoValues: [200, 400, 600, 800, 1000, 200, 400, 600, 800, 1000, 200, 400, 600, 800, 1000],
   chase: {cashBuilder: 5, cashPerCorrect: 1000, startGap: 3, homeGap: 7, chaserAccuracy: 0.75},
   lingo: {length: 5, tries: 5},                // points = tries + 1 - guessesUsed
   wheel: {segments: [100, 200, 300, 400, 500, 800, 1000, 'BANKRUPT'] as (number | 'BANKRUPT')[], vowelCost: 250, solveBonus: 500, maxWrong: 6}

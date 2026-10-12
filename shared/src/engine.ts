@@ -7,10 +7,10 @@ export type McqItem = {kind: 'mcq'; cat: string; q: string; options: string[]; a
 export type LingoItem = {kind: 'lingo'; word: string};
 export type WheelItem = {kind: 'wheel'; hint: string; phrase: string};
 export type Item = McqItem | LingoItem | WheelItem;
-export type PState = {score: number; out: boolean; gap: number; ll: boolean};
+export type PState = {score: number; out: boolean; gap: number; ll: boolean; offer: 'safe' | 'standard' | 'bold' | null};
 export type WheelRound = {gs: string; sp: number | null; rs: number; bad: number; last: string};
 
-export const freshState = (): PState => ({score: 0, out: false, gap: RULES.chase.startGap, ll: false});
+export const freshState = (): PState => ({score: 0, out: false, gap: RULES.chase.startGap, ll: false, offer: null});
 export const newWheel = (): WheelRound => ({gs: '', sp: null, rs: 0, bad: 0, last: ''});
 export const makeRng = (seed: number) => { let a = seed >>> 0; return () => (a = (a * 1664525 + 1013904223) % 4294967296) / 4294967296; };
 export function shuffle<T>(arr: T[], r: () => number): T[] {
@@ -39,12 +39,19 @@ export function buildItems(mode: ModeId, seed: number): Item[] {
 export function gradeMcq(mode: ModeId, q: number, it: McqItem, ok: boolean, p: PState): PState {
   const s = {...p}, c = RULES.chase;
   if ((mode === 'pub' || mode === 'pct') && ok) s.score++;
-  if (mode === 'mill' && ok) s.score = RULES.millLadder[q];
+  if (mode === 'mill') {
+    if (ok) s.score = RULES.millLadder[q] ?? s.score;
+    else {
+      s.score = q >= 10 ? RULES.millLadder[9] : q >= 5 ? RULES.millLadder[4] : 0;
+      s.out = true;
+    }
+  }
   if (mode === 'jeo') s.score += (ok ? 1 : -1) * it.value;
-  if ((mode === 'mill' || mode === 'pct') && !ok) s.out = true;
+  if (mode === 'pct' && !ok) s.out = true;
   if (mode === 'chase') {
     if (q < c.cashBuilder) { if (ok) s.score += c.cashPerCorrect; }
     else {
+      if (q === c.cashBuilder && !s.offer) s.offer = 'standard';
       if (ok) s.gap++;
       if (it.chaserRight) s.gap--;
       if (s.gap <= 0) { s.out = true; s.score = 0; } else if (s.gap >= c.homeGap) s.out = true;
@@ -56,10 +63,10 @@ export function gradeMcq(mode: ModeId, q: number, it: McqItem, ok: boolean, p: P
 export function publicQ(mode: ModeId, q: number, it: Item, p: PState): PublicQ {
   if (it.kind === 'lingo') return {kind: 'lingo', first: it.word[0], len: RULES.lingo.length, tries: RULES.lingo.tries};
   if (it.kind === 'wheel') return {kind: 'wheel', hint: it.hint};
+  if (mode === 'jeo') return {kind: 'jeo', meta: `${it.cat} for $${it.value}`, q: it.q};
   const c = RULES.chase;
   const meta = mode === 'mill' ? '💰 $' + RULES.millLadder[q]
     : mode === 'pct' ? `${it.pct}% of people get this right`
-    : mode === 'jeo' ? `${it.cat} for $${it.value}`
     : mode === 'chase' ? (q < c.cashBuilder ? `Cash builder: $${c.cashPerCorrect} each` : `The Chase - gap ${p.gap} (caught at 0, home at ${c.homeGap})`)
     : it.cat;
   return {kind: 'mcq', meta, q: it.q, options: it.options};

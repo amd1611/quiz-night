@@ -3,5 +3,21 @@ services:
     name: quiz-night
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: quiz-night-db
+          property: connectionString
+
+databases:
+  - name: quiz-night-db
+    databaseName: quiznight
+    user: quiznight
+    plan: free

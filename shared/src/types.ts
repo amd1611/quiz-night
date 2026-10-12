@@ -1,10 +1,12 @@
 import type {ModeId} from './config';
 export type PublicQ =
   | {kind: 'mcq'; meta: string; q: string; options: string[]}
+  | {kind: 'jeo'; meta: string; q: string}
   | {kind: 'lingo'; first: string; len: number; tries: number}
   | {kind: 'wheel'; hint: string};
 export interface MyView {
   answered: boolean; sel: number; correct: boolean | null; answer?: string; hide: number[]; ll: boolean;
+  offer?: 'safe' | 'standard' | 'bold' | null;
   guesses: {w: string; c: string[]}[]; word?: string; ok: boolean | null;
   wheel?: {mask: string[]; sp: number | null; rs: number; bad: number; last: string; used: string};
 }

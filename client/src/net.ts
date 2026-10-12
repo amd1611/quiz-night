@@ -1,19 +1,36 @@
 import {io, type Socket} from 'socket.io-client';
 import type {LeagueView, Snapshot} from '@shared/types';
 
-let pid = localStorage.getItem('qn_pid');
-if (!pid) { pid = 'p' + Math.random().toString(36).slice(2, 12); localStorage.setItem('qn_pid', pid); }
-export const myId: string = pid;
+export let myId = '';
+let socket: Socket | null = null;
 
-let sock: Socket | null = null;
-export function connect(name: string, h: {state: (s: Snapshot | null) => void; league: (l: LeagueView) => void; status: (ok: boolean) => void}) {
-  sock?.disconnect();
-  sock = io({auth: {pid, name}});            // same origin; Vite proxies /socket.io in dev
-  sock.on('state', h.state); sock.on('league', h.league);
-  sock.on('connect', () => h.status(true)); sock.on('disconnect', () => h.status(false));
+export function setMyId(id: string) {
+  myId = id;
 }
-export const call = (ev: string, data: object = {}): Promise<any> =>
-  new Promise(res => {
-    if (!sock) return res({error: 'Offline'});
-    sock.timeout(8000).emit(ev, data, (err: unknown, r: any) => res(err ? {error: 'No response from server'} : r));
+
+export function connect(handlers: {
+  state: (snapshot: Snapshot | null) => void;
+  league: (league: LeagueView) => void;
+  status: (connected: boolean) => void;
+}) {
+  socket?.disconnect();
+  socket = io({withCredentials: true, reconnection: true, reconnectionAttempts: Infinity});
+  socket.on('state', handlers.state);
+  socket.on('league', handlers.league);
+  socket.on('connect', () => handlers.status(true));
+  socket.on('disconnect', () => handlers.status(false));
+  socket.on('connect_error', () => handlers.status(false));
+}
+
+export function disconnect() {
+  socket?.disconnect();
+  socket = null;
+}
+
+export const call = (event: string, data: object = {}): Promise<any> =>
+  new Promise(resolve => {
+    if (!socket) return resolve({error: 'Not connected'});
+    socket.timeout(8000).emit(event, data, (error: unknown, result: any) =>
+      resolve(error ? {error: 'No response from the game server'} : result)
+    );
   });

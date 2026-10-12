@@ -29,7 +29,7 @@ export class Game {
     const r = this.roomOf(pid), p = r?.players.get(pid);
     return r && p && r.st === 'play' ? {r, p, it: r.items[r.q]} : null;
   }
-  private party(lg: string) { for (const r of this.rooms.values()) if (r.league === lg && !r.solo) return {code: r.code, state: r.st}; return null; }
+  private party(lg: string) { for (const r of this.rooms.values()) if (r.league === lg && !r.solo && r.st !== 'end') return {code: r.code, state: r.st}; return null; }
   private hook(r: Room) { if (r.league) this.onLeague(r.league); }
   private push(r: Room) { for (const p of r.players.values()) this.send(p.pid, 'state', this.snapshot(r, p.pid)); }
 
@@ -43,7 +43,7 @@ export class Game {
     const me = r.players.get(pid)!, it = r.st === 'play' ? r.items[r.q] : null;
     let view: MyView | null = null;
     if (it) {
-      view = {answered: me.answered, sel: me.sel, correct: me.correct, hide: me.hide, ll: me.st.ll, ok: me.ok, guesses: [], answer: undefined};
+      view = {answered: me.answered, sel: me.sel, correct: me.correct, hide: me.hide, ll: me.st.ll, offer: me.st.offer, ok: me.ok, guesses: [], answer: undefined};
       if (it.kind === 'mcq' && me.answered) view.answer = it.answer;
       if (it.kind === 'lingo') { view.guesses = me.guesses.map(w => ({w, c: lingoColors(w, it.word)})); if (me.answered) view.word = it.word; }
       if (it.kind === 'wheel') view.wheel = {mask: wheelMask(me.wheel, it.phrase, me.answered), sp: me.wheel.sp, rs: me.wheel.rs, bad: me.wheel.bad, last: me.wheel.last, used: me.wheel.gs};
@@ -73,6 +73,7 @@ export class Game {
   // ---------- rooms ----------
   create(pid: string, name: string, o: {solo?: boolean; league?: string} = {}): Res {
     const lg = String(o.league || '').toUpperCase();
+    if (o.solo && lg) return ERR('Solo games are only available in Quick Play');
     if (lg) {
       if (!this.store.isMember(lg, pid)) return ERR('Join the league first');
       const party = this.party(lg); if (party) return {error: 'A party is already open', code: party.code};
@@ -87,7 +88,7 @@ export class Game {
     const r = this.rooms.get(code.trim());
     if (!r || r.solo) return ERR('No lobby with that code');
     if (r.players.has(pid)) { this.onConnect(pid, name); return {ok: true, code: r.code}; }
-    if (r.st === 'play') return ERR('Game already started');
+    if (r.st !== 'lobby' && !(r.league && r.st === 'play')) return ERR('Game already started');
     if (r.players.size >= RULES.maxPlayers) return ERR('Lobby is full');
     if (r.league && !this.store.isMember(r.league, pid)) return ERR('Join the league first');
     this.leave(pid);
@@ -156,17 +157,18 @@ export class Game {
     if (r.st !== 'play' || r.adv) return;
     if ([...r.players.values()].every(p => p.answered || !p.connected)) { clearTimeout(r.timer); this.sched(r); }
   }
-  private sched(r: Room) { if (!r.adv) r.adv = setTimeout(() => { r.adv = undefined; this.next(r); }, RULES.advanceDelayMs); }
-  private next(r: Room) {
+  private sched(r: Room) { if (!r.adv) r.adv = setTimeout(() => { r.adv = undefined; void this.next(r); }, RULES.advanceDelayMs); }
+  private async next(r: Room) {
     if (r.st !== 'play') return;
     const elim = ['mill', 'pct', 'chase'].includes(r.mode);
     if (r.q + 1 >= r.items.length || (elim && [...r.players.values()].every(p => p.st.out))) return this.finish(r);
     r.q++; this.begin(r);
   }
-  private finish(r: Room) {
+  private async finish(r: Room) {
     r.st = 'end'; clearTimeout(r.timer); clearTimeout(r.adv); r.adv = undefined;
     const ps = [...r.players.values()], top = Math.max(...ps.map(p => p.st.score));
     if (!r.solo && r.league && top > 0) for (const p of ps) if (p.st.score === top) this.store.addWin(r.league, p.pid, r.mode);
+    await this.store.flush();
     this.push(r); this.hook(r);
   }
   private finalize(r: Room, p: RP) {
@@ -186,10 +188,39 @@ export class Game {
     c.p.st = gradeMcq(c.r.mode, c.r.q, c.it, ok, c.p.st); c.p.sel = i; c.p.correct = ok; c.p.answered = true;
     this.push(c.r); this.check(c.r); return {ok: true};
   }
+  jeopardyAnswer(pid: string, raw: string): Res {
+    const c = this.ctx(pid);
+    if (!c || c.r.mode !== 'jeo' || c.p.answered || c.it.kind !== 'mcq') return ERR('Not now');
+    const response = raw.trim();
+    if (!response) return ERR('Enter your response first');
+    const normalize = (value: string) => value.toLocaleLowerCase('en-US')
+      .replace(/^(what|who|where|when|which)\s+(is|are|was|were)\s+/i, '')
+      .replace(/[^\p{L}\p{N}]+/gu, '');
+    const ok = normalize(response) === normalize(c.it.answer);
+    c.p.st = gradeMcq('jeo', c.r.q, c.it, ok, c.p.st);
+    c.p.sel = -1; c.p.correct = ok; c.p.answered = true;
+    this.push(c.r); this.check(c.r); return {ok: true};
+  }
   fifty(pid: string): Res {
     const c = this.ctx(pid); if (!c || c.p.answered || c.it.kind !== 'mcq' || c.r.mode !== 'mill' || c.p.st.ll) return ERR('Not available');
     const it = c.it; c.p.hide = it.options.map((_, i) => i).filter(i => it.options[i] !== it.answer).slice(0, 2); c.p.st.ll = true;
     this.push(c.r); return {ok: true};
+  }
+  chooseOffer(pid: string, raw: string): Res {
+    const c = this.ctx(pid);
+    if (!c || c.r.mode !== 'chase' || c.r.q !== RULES.chase.cashBuilder || c.p.answered || c.p.st.offer) return ERR('Offer choice is closed');
+    if (!['safe', 'standard', 'bold'].includes(raw)) return ERR('Choose one of the three offers');
+    const next = {...c.p.st, offer: raw as 'safe' | 'standard' | 'bold'};
+    if (next.offer === 'safe') {
+      next.score = Math.floor(next.score / 2);
+      next.gap = RULES.chase.startGap + 1;
+    } else if (next.offer === 'bold') {
+      next.score *= 2;
+      next.gap = RULES.chase.startGap - 1;
+    }
+    c.p.st = next;
+    this.push(c.r);
+    return {ok: true};
   }
   guess(pid: string, raw: string): Res {
     const c = this.ctx(pid); if (!c || c.p.answered || c.it.kind !== 'lingo') return ERR('Not now');
@@ -209,6 +240,22 @@ export class Game {
     const res = wheelKey(c.p.wheel, c.it.phrase, letter.toUpperCase());
     if (res.error) return ERR(res.error);
     c.p.wheel = res.w; if (res.done) this.endWheel(c.p);
+    this.push(c.r); this.check(c.r); return {ok: true};
+  }
+
+  solveWheel(pid: string, raw: string): Res {
+    const c = this.ctx(pid); if (!c || c.p.answered || c.it.kind !== 'wheel') return ERR('Not now');
+    const answer = raw.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!answer) return ERR('Enter your solution first');
+    if (answer === c.it.phrase) {
+      c.p.wheel.rs += RULES.wheel.solveBonus;
+      c.p.wheel.last = 'Puzzle solved!';
+      this.endWheel(c.p);
+    } else {
+      c.p.wheel.bad++;
+      c.p.wheel.last = 'Not quite — try another letter';
+      if (c.p.wheel.bad >= RULES.wheel.maxWrong) this.endWheel(c.p);
+    }
     this.push(c.r); this.check(c.r); return {ok: true};
   }
 }
