@@ -170,7 +170,7 @@ export default function App() {
         </header>
 
         <div className={'content-grid' + (snapshot || page !== 'home' ? ' content-wide' : '')}>
-          <div className="page-content">{body}</div>
+          <div className="page-content">{snapshot?.st === 'play' && !snapshot.ai && snapshot.aiNote && <div className="ai-warning" role="status"><Sparkles size={15} /><span>{snapshot.aiNote}</span></div>}{body}</div>
           {!snapshot && page === 'home' && <HomeRail leagues={leagues} go={navigate} open={openLeague} />}
         </div>
       </main>
@@ -528,6 +528,7 @@ function Lobby({snapshot, act}: {snapshot: Snapshot; act: Act}) {
           <span className={'ready-pill' + (item.ready ? ' ready' : '')}>{item.ready ? <><Check size={13} /> READY</> : 'NOT READY'}</span>
         </div>)}</div>
         <div className="lobby-mode-note"><span className="mode-glyph" style={{background: mode.color}}>{mode.emoji}</span><span><b>{mode.name}</b><small>{mode.desc}</small></span></div>
+        {!snapshot.ai && snapshot.aiNote && <div className="ai-warning" role="status"><Sparkles size={15} /><span>{snapshot.aiNote}</span></div>}
         {isHost ? <button className="button button-primary full-button" disabled={!allReady || snapshot.busy} onClick={() => void act('start')}>
           {snapshot.busy ? <><Sparkles size={16} /> Dreaming up questions…</> : allReady ? <>Start the game <ArrowRight size={17} /></> : 'Waiting for everyone'}
         </button> : <button className={'button full-button ' + (player?.ready ? 'button-outline' : 'button-primary')} onClick={() => void act('ready')}>

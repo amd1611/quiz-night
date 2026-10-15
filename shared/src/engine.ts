@@ -29,11 +29,22 @@ export function itemsFromRaw(_mode: ModeId, seed: number, raw: RawQ[]): McqItem[
   }));
 }
 
-export function buildItems(mode: ModeId, seed: number): Item[] {
+export function buildItems(mode: ModeId, seed: number, avoid: string[] = []): Item[] {
   const r = makeRng(seed), n = RULES.count[mode];
-  if (mode === 'lingo') return shuffle(WORDS, r).slice(0, n).map(word => ({kind: 'lingo' as const, word}));
-  if (mode === 'wheel') return shuffle(PHRASES, r).slice(0, n).map(p => ({kind: 'wheel' as const, ...p}));
-  return itemsFromRaw(mode, seed, shuffle(QUESTIONS, r).slice(0, n));
+  const skip = new Set(avoid.map(x => x.toLocaleLowerCase('en-US')));
+  if (mode === 'lingo') {
+    const available = shuffle(WORDS.filter(word => !skip.has(word.toLocaleLowerCase('en-US'))), r);
+    const pool = available.length >= n ? available : [...available, ...shuffle(WORDS.filter(word => skip.has(word.toLocaleLowerCase('en-US'))), r)];
+    return pool.slice(0, n).map(word => ({kind: 'lingo' as const, word}));
+  }
+  if (mode === 'wheel') {
+    const available = shuffle(PHRASES.filter(p => !skip.has(p.phrase.toLocaleLowerCase('en-US'))), r);
+    const pool = available.length >= n ? available : [...available, ...shuffle(PHRASES.filter(p => skip.has(p.phrase.toLocaleLowerCase('en-US'))), r)];
+    return pool.slice(0, n).map(p => ({kind: 'wheel' as const, ...p}));
+  }
+  const available = shuffle(QUESTIONS.filter(q => !skip.has(q.q.toLocaleLowerCase('en-US'))), r);
+  const pool = available.length >= n ? available : [...available, ...shuffle(QUESTIONS.filter(q => skip.has(q.q.toLocaleLowerCase('en-US'))), r)];
+  return itemsFromRaw(mode, seed, pool.slice(0, n));
 }
 
 export function gradeMcq(mode: ModeId, q: number, it: McqItem, ok: boolean, p: PState): PState {

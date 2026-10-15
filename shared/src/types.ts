@@ -14,6 +14,7 @@ export interface PlayerView {pid: string; name: string; ready: boolean; connecte
 export interface Snapshot {
   code: string; solo: boolean; host: string; mode: ModeId; st: 'lobby' | 'play' | 'end';
   q: number; total: number; league: string; busy: boolean; ai: boolean; ms: number; players: PlayerView[]; question: PublicQ | null; me: MyView | null;
+  aiNote?: string | null;
 }
 export interface LeagueView {
   code: string; name: string;

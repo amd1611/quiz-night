@@ -21,6 +21,7 @@ const ERR = (error: string): Res => ({error});
 
 export class Game {
   rooms = new Map<string, Room>();
+  private soloSeen = new Map<string, string[]>();
   constructor(private send: Send, private store: Store, private onLeague: (code: string) => void, private source: QuestionSource) {}
 
   // ---------- helpers ----------
@@ -49,7 +50,7 @@ export class Game {
       if (it.kind === 'wheel') view.wheel = {mask: wheelMask(me.wheel, it.phrase, me.answered), sp: me.wheel.sp, rs: me.wheel.rs, bad: me.wheel.bad, last: me.wheel.last, used: me.wheel.gs};
     }
     return {
-      code: r.solo ? '' : r.code, solo: r.solo, host: r.host, mode: r.mode, st: r.st, q: r.q, total: r.items.length, league: r.league, busy: r.busy, ai: r.ai,
+      code: r.solo ? '' : r.code, solo: r.solo, host: r.host, mode: r.mode, st: r.st, q: r.q, total: r.items.length, league: r.league, busy: r.busy, ai: r.ai, aiNote: this.source.note,
       ms: Math.max(0, r.deadline - Date.now()),
       players: [...r.players.values()].map(p => ({pid: p.pid, name: p.name, ready: p.ready || p.pid === r.host, connected: p.connected, score: p.st.score, out: p.st.out, answered: p.answered, gap: p.st.gap})),
       question: it ? publicQ(r.mode, r.q, it, me.st) : null, me: view
@@ -123,17 +124,25 @@ export class Game {
     try { res = await job; } finally { r.busy = false; }
     if (this.rooms.get(r.code) !== r || r.st !== 'lobby') return ERR('Lobby changed');
     r.items = res.items; r.ai = res.ai; r.q = 0; r.st = 'play'; r.adv = undefined;
-    r.seen.push(...res.items.map(it => it.kind === 'mcq' ? it.q : it.kind === 'lingo' ? it.word : it.phrase)); r.seen = r.seen.slice(-200);
+    const answers = res.items.map(it => it.kind === 'mcq' ? it.q : it.kind === 'lingo' ? it.word : it.phrase);
+    r.seen.push(...answers); r.seen = r.seen.slice(-200);
+    if (r.solo) {
+      const history = this.soloSeen.get(pid) ?? [];
+      history.push(...answers);
+      this.soloSeen.set(pid, history.slice(-200));
+    }
     for (const p of r.players.values()) p.st = freshState();
     this.begin(r); this.hook(r); return {ok: true};
   }
   // Pre-generate the next game's questions a moment after the host settles on a mode (hides AI latency).
   private warm(r: Room) {
-    if (!this.source.enabled) return;
     clearTimeout(r.warmT);
     r.warmT = setTimeout(() => { r.pre = {key: r.mode, p: this.gen(r)}; }, RULES.ai.warmDelayMs);
   }
-  private gen(r: Room) { return this.source.items(r.mode, 1 + Math.floor(Math.random() * 1e9), r.seen.slice(-RULES.ai.avoidRecent)); }
+  private gen(r: Room) {
+    const seen = r.solo ? (this.soloSeen.get(r.host) ?? []) : r.seen;
+    return this.source.items(r.mode, 1 + Math.floor(Math.random() * 1e9), seen.slice(-RULES.ai.avoidRecent));
+  }
   again(pid: string): Res {
     const r = this.roomOf(pid); if (!r || r.host !== pid || r.st !== 'end') return ERR('Only the host can do that');
     r.st = 'lobby'; r.items = []; for (const p of r.players.values()) { p.ready = false; p.st = freshState(); }

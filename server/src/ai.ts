@@ -57,12 +57,18 @@ function validMcq(x: any): RawQ | null {
 }
 
 export class QuestionSource {
+  private lastFailure: string | null = null;
   constructor(private cfg: AiCfg | null = aiConfig()) {}
   get enabled() { return !!this.cfg; }
+  get note() {
+    if (!this.cfg) return 'AI is off: GEMINI_API_KEY is missing from the server environment.';
+    return this.lastFailure;
+  }
 
   /** Always resolves: AI items when possible, otherwise the built-in bank. */
   async items(mode: ModeId, seed: number, avoid: string[] = []): Promise<{items: Item[]; ai: boolean}> {
     const n = RULES.count[mode];
+    this.lastFailure = null;
     if (this.cfg) try {
       const j = await callLLM(this.cfg, buildPrompt(mode, n + RULES.ai.extra, avoid));
       const skip = new Set(avoid.map(a => a.toLowerCase()));
@@ -82,8 +88,13 @@ export class QuestionSource {
         }
         if (raw.length >= n) return {items: itemsFromRaw(mode, seed, raw.slice(0, n)), ai: true};
       }
-      console.warn(`AI returned too few valid ${mode} items; using the built-in bank`);
-    } catch (e) { console.warn('AI generation failed; using the built-in bank:', String(e)); }
-    return {items: buildItems(mode, seed), ai: false};
+      this.lastFailure = `AI returned too few valid ${mode} items; using the built-in bank.`;
+      console.warn(this.lastFailure);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      this.lastFailure = `AI generation failed (${detail}); using the built-in bank.`;
+      console.warn('AI generation failed; using the built-in bank:', detail);
+    }
+    return {items: buildItems(mode, seed, avoid), ai: false};
   }
 }

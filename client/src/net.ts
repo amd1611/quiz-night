@@ -27,10 +27,10 @@ export function disconnect() {
   socket = null;
 }
 
-export const call = (event: string, data: object = {}): Promise<any> =>
+export const call = (event: string, data: object = {}, timeoutMs = 30000): Promise<any> =>
   new Promise(resolve => {
     if (!socket) return resolve({error: 'Not connected'});
-    socket.timeout(8000).emit(event, data, (error: unknown, result: any) =>
+    socket.timeout(timeoutMs).emit(event, data, (error: unknown, result: any) =>
       resolve(error ? {error: 'No response from the game server'} : result)
     );
   });

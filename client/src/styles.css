@@ -328,6 +328,8 @@ button:disabled { cursor: not-allowed !important; }
 .round-count b { margin-left: 4px; color: #454b55; font-size: 14px; }.round-count > span { margin: 0 4px; color: #c5c8cc; }
 .game-layout { display: grid; grid-template-columns: minmax(0,1fr) 190px; gap: 12px; align-items: start; }
 .question-column { min-width: 0; }
+.ai-warning { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; padding: 12px 14px; border: 1px solid #f3d69a; border-radius: 11px; color: #855a13; background: #fff8e8; font-size: 12px; line-height: 1.5; }
+.ai-warning svg { flex: 0 0 auto; margin-top: 1px; }
 .question-card { padding: 23px; border: 1px solid #e6e7e4; border-radius: 17px; background: #fff; box-shadow: 0 9px 25px rgba(30,35,40,.04); }
 .question-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .question-category { display: inline-flex; align-items: center; min-height: 25px; padding: 5px 8px; border-radius: 7px; color: #6458d0; background: #efedff; font-size: 8px; font-weight: 800; letter-spacing: .65px; }
