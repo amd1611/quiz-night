@@ -23,7 +23,7 @@ The rules are implemented as original, lightweight party-game adaptations inspir
 - Create or join a live league party. League members can join an open party; the host picks the mode and starts once everyone is ready.
 - Quick Play supports hosted six-digit rooms, joining by code, and solo games.
 - Live rooms use Socket.IO. Accounts, league memberships, and wins persist in PostgreSQL when `DATABASE_URL` is configured.
-- Questions are generated in batches through Cloudflare Workers AI when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured. The default model is `@cf/meta/llama-3.1-8b-instruct-fp8-fast`. Gemini and OpenAI-compatible APIs remain optional alternatives. A built-in question bank keeps games playable if no provider is configured or generation fails.
+- Questions are generated in batches through Cloudflare Workers AI when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured. The default model is `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, requested with Workers AI JSON mode and a mode-specific schema. Gemini and OpenAI-compatible APIs remain optional alternatives. A built-in question bank keeps games playable if no provider is configured or generation fails.
 
 ## Run locally
 

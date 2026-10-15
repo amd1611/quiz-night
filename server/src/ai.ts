@@ -8,7 +8,7 @@ export type AiCfg = {provider: 'cloudflare' | 'gemini' | 'openai'; key: string; 
 export function aiConfig(env: Record<string, string | undefined> = process.env): AiCfg | null {
   if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN) return {
     provider: 'cloudflare', key: env.CLOUDFLARE_API_TOKEN,
-    model: env.CLOUDFLARE_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fp8-fast',
+    model: env.CLOUDFLARE_AI_MODEL || '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     base: `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run`
   };
   if (env.GEMINI_API_KEY) return {provider: 'gemini', key: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-3.8-flash', base: 'https://generativelanguage.googleapis.com/v1beta'};
@@ -32,7 +32,26 @@ export function buildPrompt(mode: ModeId, n: number, avoid: string[]): string {
   return `${shape} Multiple-choice trivia. Facts must be certain and verifiable, with exactly one correct answer, never time-sensitive (nothing "current" or "latest"). Wrong options must be plausible but definitely wrong. q under 140 chars, options under 40 chars. Mix topics: ${TOPICS}.${order}${no}`;
 }
 
-async function callLLM(cfg: AiCfg, text: string): Promise<any> {
+function cloudflareSchema(mode: ModeId, n: number) {
+  const string = {type: 'string'};
+  const list = (items: unknown, count: number) => ({type: 'array', items, minItems: count, maxItems: count});
+  if (mode === 'lingo') return {
+    type: 'object', properties: {words: list(string, n)}, required: ['words'], additionalProperties: false
+  };
+  if (mode === 'wheel') return {
+    type: 'object', properties: {puzzles: list({
+      type: 'object', properties: {hint: string, phrase: string}, required: ['hint', 'phrase'], additionalProperties: false
+    }, n)}, required: ['puzzles'], additionalProperties: false
+  };
+  return {
+    type: 'object', properties: {questions: list({
+      type: 'object', properties: {cat: string, q: string, answer: string, wrong: list(string, 3)},
+      required: ['cat', 'q', 'answer', 'wrong'], additionalProperties: false
+    }, n)}, required: ['questions'], additionalProperties: false
+  };
+}
+
+async function callLLM(cfg: AiCfg, text: string, mode: ModeId, count: number): Promise<any> {
   const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), RULES.ai.timeoutMs);
   try {
     let out = '';
@@ -41,11 +60,20 @@ async function callLLM(cfg: AiCfg, text: string): Promise<any> {
         if (cfg.provider === 'cloudflare') {
           const r = await fetch(`${cfg.base}/${cfg.model}`, {method: 'POST', signal: ctrl.signal,
             headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key},
-            body: JSON.stringify({prompt: text, max_tokens: 4096, temperature: 0.7})});
+            body: JSON.stringify({
+              messages: [
+                {role: 'system', content: 'Generate trivia data for a game. Follow the requested schema exactly. Return no commentary or markdown.'},
+                {role: 'user', content: text}
+              ],
+              response_format: {type: 'json_schema', json_schema: cloudflareSchema(mode, count)},
+              max_tokens: 4096,
+              temperature: 0.4
+            })});
           if (!r.ok) throw new Error('AI HTTP ' + r.status);
           const j: any = await r.json();
           if (j.success === false) throw new Error('AI provider rejected the request');
-          out = j.result?.response ?? '';
+          const response = j.result?.response;
+          out = typeof response === 'string' ? response : JSON.stringify(response ?? '');
         } else if (cfg.provider === 'gemini') {
           const r = await fetch(`${cfg.base}/models/${cfg.model}:generateContent`, {method: 'POST', signal: ctrl.signal,
             headers: {'Content-Type': 'application/json', 'x-goog-api-key': cfg.key},
@@ -75,7 +103,9 @@ async function callLLM(cfg: AiCfg, text: string): Promise<any> {
     }
     const unfenced = out.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
     const start = unfenced.indexOf('{'), end = unfenced.lastIndexOf('}');
-    return JSON.parse(start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced);
+    const parsed = JSON.parse(start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.response && typeof parsed.response === 'object') return parsed.response;
+    return parsed;
   } finally { clearTimeout(t); }
 }
 
@@ -99,7 +129,7 @@ export class QuestionSource {
     const n = RULES.count[mode];
     this.lastFailure = null;
     if (this.cfg) try {
-      const j = await callLLM(this.cfg, buildPrompt(mode, n + RULES.ai.extra, avoid));
+      const j = await callLLM(this.cfg, buildPrompt(mode, n + RULES.ai.extra, avoid), mode, n + RULES.ai.extra);
       const skip = new Set(avoid.map(a => a.toLowerCase()));
       if (mode === 'lingo') {
         const words = [...new Set<string>((Array.isArray(j.words) ? j.words : []).map((w: unknown) => clean(w, 5).toUpperCase()).filter((w: string) => /^[A-Z]{5}$/.test(w) && !skip.has(w.toLowerCase())))];
