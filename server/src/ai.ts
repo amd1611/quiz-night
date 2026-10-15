@@ -1,11 +1,16 @@
-// Infinite questions from a free AI. Set GEMINI_API_KEY (free at aistudio.google.com/apikey)
-// or AI_API_KEY (+ AI_BASE_URL, AI_MODEL) for any OpenAI-compatible service such as Groq.
+// Infinite questions from AI. Cloudflare Workers AI is preferred when configured.
+// Also accepts GEMINI_API_KEY or AI_API_KEY (+ AI_BASE_URL) for OpenAI-compatible services.
 // No key, or any failure -> the built-in question bank is used, so a game never breaks.
 import {RULES, type ModeId} from '../../shared/src/config';
 import {buildItems, itemsFromRaw, type Item, type RawQ} from '../../shared/src/engine';
 
-export type AiCfg = {provider: 'gemini' | 'openai'; key: string; model: string; base: string};
+export type AiCfg = {provider: 'cloudflare' | 'gemini' | 'openai'; key: string; model: string; base: string};
 export function aiConfig(env: Record<string, string | undefined> = process.env): AiCfg | null {
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN) return {
+    provider: 'cloudflare', key: env.CLOUDFLARE_API_TOKEN,
+    model: env.CLOUDFLARE_AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fp8-fast',
+    base: `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run`
+  };
   if (env.GEMINI_API_KEY) return {provider: 'gemini', key: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-3.8-flash', base: 'https://generativelanguage.googleapis.com/v1beta'};
   if (env.AI_API_KEY) return {provider: 'openai', key: env.AI_API_KEY, model: env.AI_MODEL || 'llama-3.3-70b-versatile', base: env.AI_BASE_URL || 'https://api.groq.com/openai/v1'};
   return null;
@@ -30,23 +35,47 @@ export function buildPrompt(mode: ModeId, n: number, avoid: string[]): string {
 async function callLLM(cfg: AiCfg, text: string): Promise<any> {
   const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), RULES.ai.timeoutMs);
   try {
-    let out: string;
-    if (cfg.provider === 'gemini') {
-      const r = await fetch(`${cfg.base}/models/${cfg.model}:generateContent`, {method: 'POST', signal: ctrl.signal,
-        headers: {'Content-Type': 'application/json', 'x-goog-api-key': cfg.key},
-        body: JSON.stringify({contents: [{parts: [{text}]}], generationConfig: {responseMimeType: 'application/json', temperature: 1}})});
-      if (!r.ok) throw new Error('AI HTTP ' + r.status);
-      const j: any = await r.json();
-      out = (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text || '').join('');
-    } else {
-      const r = await fetch(`${cfg.base}/chat/completions`, {method: 'POST', signal: ctrl.signal,
-        headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key},
-        body: JSON.stringify({model: cfg.model, messages: [{role: 'user', content: text}], response_format: {type: 'json_object'}, temperature: 1})});
-      if (!r.ok) throw new Error('AI HTTP ' + r.status);
-      const j: any = await r.json();
-      out = j.choices?.[0]?.message?.content ?? '';
+    let out = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (cfg.provider === 'cloudflare') {
+          const r = await fetch(`${cfg.base}/${cfg.model}`, {method: 'POST', signal: ctrl.signal,
+            headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key},
+            body: JSON.stringify({prompt: text, max_tokens: 4096, temperature: 0.7})});
+          if (!r.ok) throw new Error('AI HTTP ' + r.status);
+          const j: any = await r.json();
+          if (j.success === false) throw new Error('AI provider rejected the request');
+          out = j.result?.response ?? '';
+        } else if (cfg.provider === 'gemini') {
+          const r = await fetch(`${cfg.base}/models/${cfg.model}:generateContent`, {method: 'POST', signal: ctrl.signal,
+            headers: {'Content-Type': 'application/json', 'x-goog-api-key': cfg.key},
+            body: JSON.stringify({contents: [{parts: [{text}]}], generationConfig: {responseMimeType: 'application/json', temperature: 1}})});
+          if (!r.ok) throw new Error('AI HTTP ' + r.status);
+          const j: any = await r.json();
+          out = (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text || '').join('');
+        } else {
+          const r = await fetch(`${cfg.base}/chat/completions`, {method: 'POST', signal: ctrl.signal,
+            headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key},
+            body: JSON.stringify({model: cfg.model, messages: [{role: 'user', content: text}], response_format: {type: 'json_object'}, temperature: 1})});
+          if (!r.ok) throw new Error('AI HTTP ' + r.status);
+          const j: any = await r.json();
+          out = j.choices?.[0]?.message?.content ?? '';
+        }
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const retryable = /AI HTTP (408|425|429|5\d\d)/.test(message) || error instanceof TypeError;
+        if (!retryable || attempt === 2 || ctrl.signal.aborted) throw error;
+        const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 250);
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, delay);
+          ctrl.signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('AI request timed out')); }, {once: true});
+        });
+      }
     }
-    return JSON.parse(out.replace(/^```(?:json)?|```$/gm, '').trim());
+    const unfenced = out.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const start = unfenced.indexOf('{'), end = unfenced.lastIndexOf('}');
+    return JSON.parse(start >= 0 && end > start ? unfenced.slice(start, end + 1) : unfenced);
   } finally { clearTimeout(t); }
 }
 
@@ -61,7 +90,7 @@ export class QuestionSource {
   constructor(private cfg: AiCfg | null = aiConfig()) {}
   get enabled() { return !!this.cfg; }
   get note() {
-    if (!this.cfg) return 'AI is off: GEMINI_API_KEY is missing from the server environment.';
+    if (!this.cfg) return 'AI is off: configure Cloudflare Workers AI or another server AI provider.';
     return this.lastFailure;
   }
 

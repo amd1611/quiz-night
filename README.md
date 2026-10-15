@@ -23,7 +23,7 @@ The rules are implemented as original, lightweight party-game adaptations inspir
 - Create or join a live league party. League members can join an open party; the host picks the mode and starts once everyone is ready.
 - Quick Play supports hosted six-digit rooms, joining by code, and solo games.
 - Live rooms use Socket.IO. Accounts, league memberships, and wins persist in PostgreSQL when `DATABASE_URL` is configured.
-- Questions are generated in batches through Google's Gemini API when `GEMINI_API_KEY` is configured. A built-in question bank keeps games playable when no key is set or generation fails. The default model is `gemini-3.8-flash`; review the [Gemini API pricing and data terms](https://ai.google.dev/gemini-api/docs/pricing) before using it.
+- Questions are generated in batches through Cloudflare Workers AI when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are configured. The default model is `@cf/meta/llama-3.1-8b-instruct-fp8-fast`. Gemini and OpenAI-compatible APIs remain optional alternatives. A built-in question bank keeps games playable if no provider is configured or generation fails.
 
 ## Run locally
 
@@ -35,11 +35,20 @@ cp .env.example .env
 npm run dev
 ```
 
-The Vite client runs at `http://localhost:5173` and proxies API and Socket.IO requests to the Express server. Set `GEMINI_API_KEY` in `.env` to enable AI-generated question batches. Set `DATABASE_URL` to a PostgreSQL connection string for persistent local data; without it the server uses in-memory storage. Set `JWT_SECRET` to a private random value for persistent local sessions.
+The Vite client runs at `http://localhost:5173` and proxies API and Socket.IO requests to the Express server. Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env` to enable AI-generated question batches. Cloudflare Workers AI currently includes 10,000 Neurons/day on its Free plan; once used, calls stop until the daily reset. Set `DATABASE_URL` to a PostgreSQL connection string for persistent local data; without it the server uses in-memory storage. Set `JWT_SECRET` to a private random value for persistent local sessions.
 
 ## Deploy to Render
 
-This repository includes a Render Blueprint in [`render.yaml`](render.yaml). In Render, create a **New Blueprint Instance**, connect this GitHub repository, and apply the Blueprint. It provisions a Node web service and PostgreSQL database, configures a generated `JWT_SECRET`, and uses `/healthz` as its health check. To turn on AI questions, open the `quiz-night` web service → **Environment** → **Add Environment Variable**, set the key to `GEMINI_API_KEY`, and paste an API key created at [Google AI Studio](https://aistudio.google.com/apikey). Save and redeploy. The game lobby will show an explicit warning when AI is unconfigured or generation fails; generated questions are used only when a complete valid batch is returned, otherwise the built-in bank keeps the round playable. Never commit or share the key. The default model is `gemini-3.8-flash`; you can override it with `AI_MODEL` if needed.
+This repository includes a Render Blueprint in [`render.yaml`](render.yaml). In Render, create a **New Blueprint Instance**, connect this GitHub repository, and apply the Blueprint. It provisions a Node web service and PostgreSQL database, configures a generated `JWT_SECRET`, and uses `/healthz` as its health check.
+
+To enable AI question batches:
+
+1. Create a Cloudflare account and open **Workers AI** → **Use REST API**.
+2. Create a Workers AI API token using Cloudflare's template, then copy the token and your Account ID. Keep the token private.
+3. In Render, open the `quiz-night` web service → **Environment**. Add `CLOUDFLARE_ACCOUNT_ID` with your account ID and `CLOUDFLARE_API_TOKEN` with your token.
+4. Save changes and let Render redeploy. Start a game; the lobby/game indicates whether AI generated its questions.
+
+Cloudflare Workers AI includes 10,000 Neurons per day at no charge on the Free plan. The quota is shared by the Cloudflare account, resets at 00:00 UTC, and requests stop after it is exhausted; they do not automatically become paid requests on the Free plan. See [Cloudflare pricing and quota](https://developers.cloudflare.com/workers-ai/platform/pricing/) and [REST API setup](https://developers.cloudflare.com/workers-ai/get-started/rest-api/). Keep credentials out of source control. The default model can be changed with `CLOUDFLARE_AI_MODEL`. Gemini can instead be configured with `GEMINI_API_KEY`, and an OpenAI-compatible provider with `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`.
 
 The Blueprint uses Render's free web-service and PostgreSQL plans. Free web services can sleep after 15 minutes without traffic, and free PostgreSQL databases expire after 30 days. Review Render's current [free instance limits](https://render.com/docs/free) before relying on the service for long-term league history. Render's [Blueprint documentation](https://render.com/docs/blueprint-spec) describes the deploy flow and configuration.
 
