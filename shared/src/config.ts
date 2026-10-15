@@ -13,7 +13,7 @@ export const MODES: Record<ModeId, {name: string; emoji: string; color: string; 
 };
 
 export const RULES = {
-  ai: {timeoutMs: 15000, avoidRecent: 40, warmDelayMs: 1500, extra: 3},  // AI question generation (see server/src/ai.ts)
+  ai: {timeoutMs: 30000, avoidRecent: 40, warmDelayMs: 1500, extra: 3},  // AI question generation (see server/src/ai.ts)
   maxPlayers: 10,
   roomCodeLength: 6,
   leagueCodeLength: 6,

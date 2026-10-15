@@ -76,7 +76,7 @@ export default function App() {
   }, [online, snapshot]);
 
   const act: Act = async (event, data = {}) => {
-    const result = await call(event, data);
+    const result = await call(event, data, event === 'start' ? 40000 : 30000);
     if (result?.error) flash(result.error);
     return result;
   };
